@@ -1,6 +1,7 @@
 import { io, type Socket } from 'socket.io-client';
 import { browser } from '$app/environment';
 import type { Notification } from '@racona/database';
+import { getTranslationStore } from '$lib/i18n/store.svelte';
 
 export interface NotificationState {
 	notifications: Notification[];
@@ -320,6 +321,20 @@ class NotificationStore {
 	}
 
 	/**
+	 * Get localized text from i18n content object
+	 * Falls back to 'hu' if current locale is not available
+	 */
+	private getLocalizedText(content: unknown): string {
+		if (typeof content === 'string') return content; // Backward compatibility
+		if (content && typeof content === 'object') {
+			const obj = content as Record<string, string>;
+			const locale = getTranslationStore().currentLocale || 'hu';
+			return obj[locale] || obj['hu'] || obj['en'] || Object.values(obj)[0] || '';
+		}
+		return '';
+	}
+
+	/**
 	 * Show toast notification (or queue critical notification for alert dialog)
 	 */
 	private showToastNotification(notification: Notification) {
@@ -338,21 +353,8 @@ class NotificationStore {
 			.then(({ toast }) => {
 				console.log('[NotificationStore] Toast imported successfully');
 
-				// Get localized text
-				const getLocalizedText = (content: any): string => {
-					if (typeof content === 'string') return content;
-					if (content && typeof content === 'object') {
-						// Try to get browser language or fallback to 'hu'
-						const locale = navigator.language.split('-')[0] || 'hu';
-						return (
-							content[locale] || content['hu'] || content['en'] || Object.values(content)[0] || ''
-						);
-					}
-					return '';
-				};
-
-				const title = getLocalizedText(notification.title);
-				const message = getLocalizedText(notification.message);
+				const title = this.getLocalizedText(notification.title);
+				const message = this.getLocalizedText(notification.message);
 
 				console.log('[NotificationStore] Showing toast:', {
 					title,
@@ -406,17 +408,20 @@ class NotificationStore {
 	private showBrowserNotification(notification: Notification) {
 		if (!browser || !('Notification' in window)) return;
 
+		const title = this.getLocalizedText(notification.title);
+		const body = this.getLocalizedText(notification.message);
+
 		if (Notification.permission === 'granted') {
-			new Notification(String(notification.title), {
-				body: String(notification.message),
+			new Notification(title, {
+				body,
 				icon: '/favicon.svg',
 				tag: `notification-${notification.id}`
 			});
 		} else if (Notification.permission !== 'denied') {
 			Notification.requestPermission().then((permission) => {
 				if (permission === 'granted') {
-					new Notification(String(notification.title), {
-						body: String(notification.message),
+					new Notification(title, {
+						body,
 						icon: '/favicon.svg',
 						tag: `notification-${notification.id}`
 					});
